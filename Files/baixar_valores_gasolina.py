@@ -5,23 +5,36 @@ import os
 import glob
 
 
-def aguarda_download(download_dir, minutes=3):
+def aguarda_novo_arquivo(download_dir, arquivos_anteriores, minutes=3):
     """
-    Aguarda até que um arquivo seja baixado (arquivo completo, sem extensão .crdownload)
-    Retorna o caminho do arquivo baixado ou None se o tempo limite for atingido.
+    Aguarda que um novo arquivo seja criado na pasta de download que não esteja em 'arquivos_anteriores',
+    ignorando arquivos com extensão .crdownload.
+    Retorna o caminho do novo arquivo ou None se o tempo limite for atingido.
     """
     timeout = minutes * 60
     tempo_inicial = time.time()
-    while True:
-        arquivos = glob.glob(os.path.join(download_dir, '*'))
+    while time.time() - tempo_inicial < timeout:
+        atuais = set(glob.glob(os.path.join(download_dir, '*')))
+        novos = atuais - arquivos_anteriores
         # Filtra arquivos que não estejam em download (sem .crdownload)
-        arquivos_finais = [a for a in arquivos if not a.endswith('.crdownload')]
-        if arquivos_finais:
-            return max(arquivos_finais, key=os.path.getctime)
-        if time.time() - tempo_inicial > timeout:
-            break
+        novos = {a for a in novos if not a.endswith('.crdownload')}
+        if novos:
+            return max(novos, key=os.path.getctime)
         time.sleep(1)
     return None
+
+
+def aguarda_download_finalizado(arquivo, espera=2):
+    """
+    Aguarda até que o arquivo esteja estável (tamanho não muda por 'espera' segundos).
+    """
+    stable = False
+    while not stable:
+        tamanho_inicial = os.path.getsize(arquivo)
+        time.sleep(espera)
+        tamanho_final = os.path.getsize(arquivo)
+        if tamanho_inicial == tamanho_final:
+            stable = True
 
 
 def sanitiza_nome(nome):
@@ -93,21 +106,33 @@ for titulo in all_titulos:
             # Remove downloads incompletos antes de iniciar nova tentativa
             remove_downloads_incompletos(download_dir)
 
+            # Aguarda que não haja downloads em andamento
+            while not downloads_finalizados(download_dir):
+                print("Aguardando que o download anterior termine...")
+                time.sleep(2)
+
+            # Registra os arquivos existentes antes de iniciar o download
+            arquivos_anteriores = set(glob.glob(os.path.join(download_dir, '*')))
+
             # Localiza o container pai do título e o botão para acessar o recurso
             container = titulo.find_element(By.XPATH, "./ancestor::div[1]")
             botao = container.find_element(By.XPATH, ".//button[contains(., 'Acessar o recurso')]")
             botao.click()
             time.sleep(2)  # Aguarda o início do download
 
-            arquivo_baixado = aguarda_download(download_dir, minutes=3)
-            if not arquivo_baixado:
+            # Aguarda que um novo arquivo apareça
+            novo_arquivo = aguarda_novo_arquivo(download_dir, arquivos_anteriores, minutes=3)
+            if not novo_arquivo:
                 raise Exception("Arquivo não foi baixado no tempo esperado.")
 
+            # Aguarda que o arquivo esteja estável (download concluído)
+            aguarda_download_finalizado(novo_arquivo, espera=2)
+
             # Extrai a extensão e define o novo nome do arquivo
-            _, extensao = os.path.splitext(arquivo_baixado)
+            _, extensao = os.path.splitext(novo_arquivo)
             novo_nome = sanitiza_nome(titulo.text) + extensao
             novo_caminho = os.path.join(download_dir, novo_nome)
-            os.rename(arquivo_baixado, novo_caminho)
+            os.rename(novo_arquivo, novo_caminho)
             print(f"Arquivo renomeado para: {novo_caminho}")
             sucesso = True
         except Exception as e:
