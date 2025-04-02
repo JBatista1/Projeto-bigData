@@ -1,6 +1,8 @@
 import os
 import glob
 import time
+import re
+import unicodedata
 
 class DownloadManager:
     def __init__(self, download_dir, max_attempts=3, seconds_in_minute=60):
@@ -33,7 +35,12 @@ class DownloadManager:
         caracteres_invalidos = '<>:"/\\|?*'
         for char in caracteres_invalidos:
             nome = nome.replace(char, '_')
-        return nome.strip()
+        nome_limpo = re.sub(r'[^a-zA-Z0-9_\.]', '', unicodedata.normalize('NFKD', nome.strip().replace(" ", "_")).encode('ASCII', 'ignore').decode( 'utf-8'))
+
+        print(nome_limpo)
+        # Saída: 1_Sem_2020_Combustiveis_Automotivos.csv
+
+        return nome_limpo
 
     def downloads_finalizados(self):
         crdownload_files = glob.glob(os.path.join(self.download_dir, '*.crdownload'))
