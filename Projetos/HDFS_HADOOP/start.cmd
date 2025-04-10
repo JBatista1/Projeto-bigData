@@ -8,7 +8,8 @@ echo Repositório clonado!
 
 echo Iniciando Hadoop
 cd hadoop
- docker-compose ps
+docker-compose up
+docker-compose ps
 
 echo Hadoop Iniciado
 
